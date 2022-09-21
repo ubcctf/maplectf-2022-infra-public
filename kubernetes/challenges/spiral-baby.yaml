@@ -1,0 +1,67 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spiral-baby
+  namespace: challenges
+  annotations:
+    cloud.google.com/backend-config: '{"default": "release-wave-1"}'
+    external-dns.alpha.kubernetes.io/hostname: "spiral-baby.ctf.maplebacon.org"
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+    - name: leet
+      port: 1337
+      targetPort: 1337
+      protocol: TCP
+  selector:
+    app: spiral-baby
+  sessionAffinity: ClientIP
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spiral-baby
+  labels:
+    app: spiral-baby
+  namespace: challenges
+spec:
+  selector:
+    matchLabels:
+      app: spiral-baby
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: spiral-baby
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node_pool
+                    operator: In
+                    values:
+                      - maplectf-node-pool
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: spiral-baby
+          image: gcr.io/maplectf-2022/spiral-baby:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 1337
+              name: leet
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

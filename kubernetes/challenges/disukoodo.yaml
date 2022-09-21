@@ -1,0 +1,53 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: disukoodo
+  labels:
+    app: disukoodo
+  namespace: challenges
+spec:
+  selector:
+    matchLabels:
+      app: disukoodo
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: disukoodo
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node_pool
+                    operator: In
+                    values:
+                      - maplectf-node-pool
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: disukoodo
+          image: gcr.io/maplectf-2022/disukoodo:latest
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: discord-token
+              mountPath: "/ctf/token.txt"
+              subPath: "token.txt"
+              readOnly: true
+      volumes:
+        - name: discord-token
+          secret:
+            secretName: disukoodo

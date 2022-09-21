@@ -1,0 +1,22 @@
+---
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: release-wave-1
+  namespace: challenges
+spec:
+  securityPolicy:
+    name: ""
+  sessionAffinity:
+    affinityType: "CLIENT_IP"
+---
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: release-wave-2
+  namespace: challenges
+spec:
+  securityPolicy:
+    name: ""
+  sessionAffinity:
+    affinityType: "CLIENT_IP"

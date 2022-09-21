@@ -1,0 +1,175 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: ctfd
+  creationTimestamp: null
+  labels:
+    ctfd: ctf-pv
+    app: ctf-pv-logs
+  name: ctf-pv-logs
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+status: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: ctfd
+  creationTimestamp: null
+  name: ctfd
+  labels:
+    ctfd: ctfd
+    app: ctfd
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ctfd
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  minReadySeconds: 15
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        ctfd: ctfd
+        app: ctfd
+    spec:
+      containers:
+        - env:
+            - name: ACCESS_LOG
+              value: "-"
+            - name: ERROR_LOG
+              value: "-"
+            - name: WORKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: ctfd-config
+                  key: WORKERS
+          envFrom:
+            - secretRef:
+                name: ctfd-secret-key
+          image: gcr.io/maplectf-2022/ctfd
+          imagePullPolicy: "Always"
+          name: ctfd
+          resources:
+            requests:
+              cpu: "12000m"
+              memory: "12Gi"
+          volumeMounts:
+            - mountPath: /opt/CTFd/CTFd/config.ini
+              name: ctfd-config
+              subPath: config.ini
+          livenessProbe:
+            httpGet:
+              path: /themes/core/static/css/main.dev.css
+              port: 8000
+              scheme: HTTP
+            initialDelaySeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /themes/core/static/css/main.dev.css
+              port: 8000
+              scheme: HTTP
+            initialDelaySeconds: 10
+          ports:
+            - containerPort: 8000
+      nodeSelector:
+        ctfd-only: "true"
+      tolerations:
+        - key: "ctfd-node-pool"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+      restartPolicy: Always
+      serviceAccountName: ""
+      automountServiceAccountToken: false
+      volumes:
+        - name: ctfd-config
+          configMap:
+            name: ctfd-config
+            items:
+              - key: config.ini
+                path: config.ini
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: ctfd-ssl-certificate
+  namespace: ctfd
+spec:
+  domains:
+    - "ctf.maplebacon.org"
+---
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: ssl-redirect
+  namespace: ctfd
+spec:
+  redirectToHttps:
+    enabled: true
+---
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: ctfd-healthcheck
+  namespace: ctfd
+spec:
+  healthCheck:
+    checkIntervalSec: 15
+    port: 8000
+    type: HTTP
+    requestPath: /themes/core/static/css/main.dev.css
+  sessionAffinity:
+    affinityType: "CLIENT_IP"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: ctfd
+  creationTimestamp: null
+  labels:
+    app: ctfd
+  name: ctfd
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    cloud.google.com/backend-config: '{"default": "ctfd-healthcheck"}'
+    cloud.google.com/neg: '{"ingress": true}'
+spec:
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8000
+  selector:
+    app: ctfd
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: http
+  namespace: ctfd
+  annotations:
+    networking.gke.io/v1beta1.FrontendConfig: ssl-redirect
+    networking.gke.io/managed-certificates: ctfd-ssl-certificate
+spec:
+  rules:
+    - host: ctf.maplebacon.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ctfd
+                port:
+                  number: 80

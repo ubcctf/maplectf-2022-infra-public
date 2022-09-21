@@ -1,0 +1,97 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vienelibrary
+  namespace: challenges
+  annotations:
+    cloud.google.com/backend-config: '{"default": "release-wave-1"}'
+spec:
+  selector:
+    app: vienelibrary
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vienelibrary
+  labels:
+    app: vienelibrary
+  namespace: challenges
+spec:
+  selector:
+    matchLabels:
+      app: vienelibrary
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: vienelibrary
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node_pool
+                    operator: In
+                    values:
+                      - maplectf-node-pool
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      containers:
+        - name: vienelibrary
+          image: gcr.io/maplectf-2022/vienelibrary:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vienelibrary
+  namespace: challenges
+spec:
+  rules:
+    - host: vienelibrary.ctf.maplebacon.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vienelibrary
+                port:
+                  number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vienelibrary
+  namespace: challenges
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vienelibrary
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50

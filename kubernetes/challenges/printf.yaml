@@ -1,0 +1,88 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: printf
+  namespace: challenges
+  annotations:
+    cloud.google.com/backend-config: '{"default": "release-wave-2"}'
+    external-dns.alpha.kubernetes.io/hostname: "printf.ctf.maplebacon.org"
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+    - name: leet
+      port: 1337
+      targetPort: 1337
+      protocol: TCP
+  selector:
+    app: printf
+  sessionAffinity: ClientIP
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: printf
+  labels:
+    app: printf
+  namespace: challenges
+spec:
+  selector:
+    matchLabels:
+      app: printf
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: printf
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node_pool
+                    operator: In
+                    values:
+                      - maplectf-node-pool
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: printf
+          image: gcr.io/maplectf-2022/printf:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 1337
+              name: leet
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          tty: true
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: printf
+  namespace: challenges
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: printf
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50

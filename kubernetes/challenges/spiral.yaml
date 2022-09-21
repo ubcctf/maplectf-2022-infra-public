@@ -1,0 +1,83 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spiral
+  namespace: challenges
+  annotations:
+    cloud.google.com/backend-config: '{"default": "release-wave-1"}'
+    external-dns.alpha.kubernetes.io/hostname: "spiral.ctf.maplebacon.org"
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+    - name: leet
+      port: 1337
+      targetPort: 1337
+      protocol: TCP
+  selector:
+    app: spiral
+  sessionAffinity: ClientIP
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spiral
+  labels:
+    app: spiral
+  namespace: challenges
+spec:
+  selector:
+    matchLabels:
+      app: spiral
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: spiral
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node_pool
+                    operator: In
+                    values:
+                      - maplectf-node-pool
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      containers:
+        - name: spiral
+          image: gcr.io/maplectf-2022/spiral:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 1337
+              name: leet
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: spiral
+  namespace: challenges
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: spiral
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50

@@ -1,0 +1,88 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: no-flag-4-u
+  namespace: challenges
+  annotations:
+    cloud.google.com/backend-config: '{"default": "release-wave-1"}'
+    external-dns.alpha.kubernetes.io/hostname: "no-flag-4-u.ctf.maplebacon.org"
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+    - name: leet
+      port: 1337
+      targetPort: 1337
+      protocol: TCP
+  selector:
+    app: no-flag-4-u
+  sessionAffinity: ClientIP
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: no-flag-4-u
+  labels:
+    app: no-flag-4-u
+  namespace: challenges
+spec:
+  selector:
+    matchLabels:
+      app: no-flag-4-u
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: no-flag-4-u
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node_pool
+                    operator: In
+                    values:
+                      - maplectf-node-pool
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: no-flag-4-u
+          image: gcr.io/maplectf-2022/no-flag-4-u:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 1337
+              name: leet
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          tty: true
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: no-flag-4-u
+  namespace: challenges
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: no-flag-4-u
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50

@@ -1,0 +1,52 @@
+properties([
+    pipelineTriggers([
+        githubPush()
+    ])
+])
+
+pipeline {
+    agent any 
+    environment {
+        GCP = credentials('gcr-keyfile')
+    }
+    stages {
+        stage('Pull') { 
+            steps {
+                sshagent(['jenkins-ssh-key']) {
+                    sh '''
+                    mkdir -p ~/.ssh
+                    rm -rf ~/.docker
+                    ssh-keyscan -t rsa,ed25519 github.com >> ~/.ssh/known_hosts
+                    ssh-keyscan -t rsa,ed25519 bastion.internal.ctf.maplebacon.org >> ~/.ssh/known_hosts
+                    '''
+                }
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], browser: [$class: 'GithubWeb', repoUrl: 'https://github.com/ubcctf/maple-ctf-2022'], extensions: [], userRemoteConfigs: [[credentialsId: 'jenkins-ssh-key', url: 'git@github.com:ubcctf/maple-ctf-2022.git']]])
+            }
+        }
+        stage('Docker') {
+            steps {
+                sshagent(['jenkins-ssh-key']) {
+                    sh '''
+                    cat "$GCP" | docker login -u _json_key --password-stdin https://gcr.io
+                    
+                    IMAGE_DIRS=$(find . -name "Dockerfile" | sed -r 's/(Dockerfile)//' | grep -i "hosted")
+                    for path in $IMAGE_DIRS; do
+                        IMAGE_NAME=$(echo $path | awk -F '/' '{print $3}' - | tr '[:upper:]' '[:lower:]')
+                        IMAGE_EXT=$(echo $path | awk -F '/' '{print $5}' - | tr '[:upper:]' '[:lower:]')
+                        if [ ! -e $IMAGE_EXT ]; then
+                            IMAGE_NAME="$IMAGE_NAME/$IMAGE_EXT"
+                        fi
+                        IMAGE_VER="$(git rev-parse --short HEAD)"
+                        
+                        echo "building - $IMAGE_NAME (v$IMAGE_VER)"
+                        
+                        docker build $path -t gcr.io/maplectf-2022/$IMAGE_NAME:$IMAGE_VER -t gcr.io/maplectf-2022/$IMAGE_NAME:latest
+                        docker push --all-tags gcr.io/maplectf-2022/$IMAGE_NAME
+                        docker rmi gcr.io/maplectf-2022/$IMAGE_NAME:$IMAGE_VER gcr.io/maplectf-2022/$IMAGE_NAME:latest
+                    done
+                    '''
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,40 @@
+properties([
+    pipelineTriggers([
+        githubPush()
+    ])
+])
+
+pipeline {
+    agent any 
+    environment {
+        GCP = credentials('gcr-keyfile')
+    }
+    stages {
+        stage('Pull') { 
+            steps {
+                sshagent(['jenkins-ssh-key']) {
+                    sh '''
+                    mkdir -p ~/.ssh
+                    rm -rf ~/.docker
+                    ssh-keyscan -t rsa,ed25519 github.com >> ~/.ssh/known_hosts
+                    ssh-keyscan -t rsa,ed25519 bastion.internal.ctf.maplebacon.org >> ~/.ssh/known_hosts
+                    '''
+                }
+                checkout([$class: 'GitSCM', branches: [[name: '*/3.5.0-maplectf']], browser: [$class: 'GithubWeb', repoUrl: 'https://github.com/ubcctf/CTFd'], extensions: [], userRemoteConfigs: [[credentialsId: 'jenkins-ssh-key', url: 'git@github.com:ubcctf/CTFd.git']]])
+            }
+        }
+        stage('Docker') {
+            steps {
+                sshagent(['jenkins-ssh-key']) {
+                    sh '''
+                    cat "$GCP" | docker login -u _json_key --password-stdin https://gcr.io
+                    
+                    docker build . -t gcr.io/maplectf-2022/ctfd:latest
+                    docker push gcr.io/maplectf-2022/ctfd:latest
+                    docker rmi gcr.io/maplectf-2022/ctfd:latest
+                    '''
+                }
+            }
+        }
+    }
+}

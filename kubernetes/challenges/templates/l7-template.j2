@@ -1,0 +1,115 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ name }}
+  namespace: challenges
+  annotations:
+    cloud.google.com/backend-config: '{"default": "admin-whitelist"}'
+spec:
+  selector:
+    app: {{ name }}
+  ports:
+  {% for port in ports -%}
+    {% filter indent(first=true, width=2) -%}
+    - name: {{ port['name'] }}
+    port: {{ port['port'] }}
+    targetPort: {{ port['containerPort'] }}
+    protocol: {{ port['protocol'] }}
+    {%- endfilter %}
+  {%- endfor %}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ name }}
+  labels:
+    app: {{ name }}
+  namespace: challenges
+spec:
+  selector:
+    matchLabels:
+      app: {{ name }}
+  replicas: {{ instances }}
+  template:
+    metadata:
+      labels:
+        app: {{ name }}
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node_pool
+                    operator: In
+                    values:
+                      - maplectf-node-pool
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      {%- if fs_read_only %}
+      securityContext:
+        fsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 1000
+      {% else %}
+      {% endif -%}
+      containers:
+        - name: {{ name }}
+          image: gcr.io/maplectf-2022/{{ name }}:latest
+          imagePullPolicy: Always
+          ports:
+          {% for port in ports -%}
+            {% filter indent(first=true, width=2) -%}
+            - containerPort: {{ port['containerPort'] }}
+            name: {{ port['name'] }}
+            {%- endfilter %}
+          {%- endfor %}
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+          resources:
+            limits:
+              cpu: "{{ cpuLimit }}"
+              memory: "{{ memoryLimit }}"
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ name }}
+  namespace: challenges
+spec:
+  rules:
+    - host: {{ name }}.ctf.maplebacon.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ name }}
+                port:
+                  number: 80
+{%- if instances > 1 %}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ name }}
+  namespace: challenges
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ name }}
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+{% else %}
+{% endif -%}

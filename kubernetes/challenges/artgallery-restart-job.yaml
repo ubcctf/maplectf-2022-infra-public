@@ -1,0 +1,62 @@
+---
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: artgallery-deployment-restart
+  namespace: challenges
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: artgallery-deployment-restart
+  namespace: challenges
+rules:
+  - apiGroups: ["apps", "extensions"]
+    resources: ["deployments"]
+    resourceNames: ["artgallery"]
+    verbs: ["get", "patch", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: artgallery-deployment-restart
+  namespace: challenges
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: artgallery-deployment-restart
+subjects:
+  - kind: ServiceAccount
+    name: artgallery-deployment-restart
+    namespace: challenges
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: artgallery-deployment-restart
+  namespace: challenges
+spec:
+  concurrencyPolicy: Forbid
+  schedule: '*/5 * * * *'
+  successfulJobsHistoryLimit: 0
+  failedJobsHistoryLimit: 0
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            deployment/restart: "artgallery"
+        spec:
+          serviceAccountName: artgallery-deployment-restart
+          restartPolicy: Never
+          containers:
+            - name: kubectl
+              image: bitnami/kubectl
+              command:
+                - bash
+                - -c
+                - >-
+                  kubectl rollout restart deployment/artgallery &&
+                  kubectl rollout status deployment/artgallery

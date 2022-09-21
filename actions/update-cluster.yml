@@ -1,0 +1,162 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Update cluster
+
+# Controls when the workflow will run
+on: 
+  push:
+    branches:
+    - main
+  pull_request:
+    branches:
+    - main
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+  
+# Allows one build at a time
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+
+  update-infra:
+    # The type of runner that the job will run on
+    runs-on: self-hosted
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+
+      - name: Install kubectl
+        uses: Azure/setup-kubectl@v3
+
+      - name: Install kubeval
+        run: |
+          wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+          tar xf kubeval-linux-amd64.tar.gz
+          sudo cp kubeval /usr/local/bin
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+
+      - name: Authenticate to Google Cloud
+        uses: 'google-github-actions/auth@v0'
+        with:
+          credentials_json: '${{ secrets.GCP_TOKEN }}'
+
+      - name: 'Set up gcloud SDK'
+        uses: 'google-github-actions/setup-gcloud@v0'
+        with:
+          version: '397.0.0'
+
+      - name: Check gcloud
+        run: |
+          set -x
+          gcloud info
+
+      - name: Get GKE Credentials
+        uses: 'google-github-actions/get-gke-credentials@v0'
+        with:
+          cluster_name: 'maplectf-prod'
+          location: 'us-west1-b'
+
+      - name: Terraform Init
+        id: tfinit
+        run: terraform -chdir=$GITHUB_WORKSPACE/2022int/tf/prod init
+
+      - name: Terraform Format
+        id: tffmt
+        run: terraform -chdir=$GITHUB_WORKSPACE/2022int/tf/prod fmt -check
+
+      - name: Terraform Validate
+        id: tfvalidate
+        run: terraform -chdir=$GITHUB_WORKSPACE/2022int/tf/prod validate
+
+      - name: Terraform Plan
+        id: tfplan
+        run: terraform -chdir=$GITHUB_WORKSPACE/2022int/tf/prod plan -input=false -no-color
+        continue-on-error: true
+
+      - name: Update Pull Request with Terraform
+        uses: actions/github-script@v6.1.0
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: "${{ steps.tfplan.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Format and Style 🖌\`${{ steps.tffmt.outcome }}\`
+            #### Terraform Initialization ⚙️\`${{ steps.tfinit.outcome }}\`
+            #### Terraform Plan 📖\`${{ steps.tfplan.outcome }}\`
+            #### Terraform Validation 🤖\`${{ steps.tfvalidate.outcome }}\`
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`\n
+            ${process.env.PLAN}
+            \`\`\`
+
+            </details>
+
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      - name: Terraform Plan Status
+        if: steps.tfplan.outcome == 'failure'
+        run: exit 1
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          set -x
+          terraform -chdir=$GITHUB_WORKSPACE/2022int/tf/prod apply -auto-approve -input=false
+
+      - name: Lint Yamls
+        id: yamllint
+        run: yamllint -f github $GITHUB_WORKSPACE/2022int/kubernetes
+
+      - name: Lint Kubernetes Manifests
+        id: kubelint
+        run: kubeval -d $GITHUB_WORKSPACE/2022int/kubernetes --ignore-missing-schemas
+
+      - name: Update Pull Request with Kubernetes
+        uses: actions/github-script@v6.1.0
+        if: github.event_name == 'pull_request'
+        env:
+          KUBELINT: "${{ steps.kubelint.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Kubernetes Linting 🖌\`${{ steps.kubelint.outcome }}\`
+
+            <details><summary>Show Linting</summary>
+
+            \`\`\`\n
+            ${process.env.KUBELINT}
+            \`\`\`
+
+            </details>
+
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      - name: Apply Kubernetes Manifests
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          set -x
+          kubectl apply -Rf $GITHUB_WORKSPACE/2022int/kubernetes

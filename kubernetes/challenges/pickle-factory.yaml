@@ -1,0 +1,97 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pickle-factory
+  namespace: challenges
+  annotations:
+    cloud.google.com/backend-config: '{"default": "release-wave-2"}'
+spec:
+  selector:
+    app: pickle-factory
+  ports:
+    - name: http
+      port: 80
+      targetPort: 9229
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pickle-factory
+  labels:
+    app: pickle-factory
+  namespace: challenges
+spec:
+  selector:
+    matchLabels:
+      app: pickle-factory
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: pickle-factory
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node_pool
+                    operator: In
+                    values:
+                      - maplectf-node-pool
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      containers:
+        - name: pickle-factory
+          image: gcr.io/maplectf-2022/pickle-factory:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9229
+              name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pickle-factory
+  namespace: challenges
+spec:
+  rules:
+    - host: pickle-factory.ctf.maplebacon.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pickle-factory
+                port:
+                  number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: pickle-factory
+  namespace: challenges
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pickle-factory
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50

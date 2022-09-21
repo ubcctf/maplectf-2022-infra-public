@@ -1,0 +1,88 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warmup2
+  namespace: challenges
+  annotations:
+    cloud.google.com/backend-config: '{"default": "release-wave-1"}'
+    external-dns.alpha.kubernetes.io/hostname: "warmup2.ctf.maplebacon.org"
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+    - name: warmup2
+      port: 1337
+      targetPort: 1337
+      protocol: TCP
+  selector:
+    app: warmup2
+  sessionAffinity: ClientIP
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: warmup2
+  labels:
+    app: warmup2
+  namespace: challenges
+spec:
+  selector:
+    matchLabels:
+      app: warmup2
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: warmup2
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node_pool
+                    operator: In
+                    values:
+                      - maplectf-node-pool
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: warmup2
+          image: gcr.io/maplectf-2022/warmup2:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 1337
+              name: warmup2
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          tty: true
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: warmup2
+  namespace: challenges
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: warmup2
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
