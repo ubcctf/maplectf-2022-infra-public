@@ -362,7 +362,7 @@ resource "google_compute_security_policy" "admin-whitelist" {
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
-        src_ip_ranges = ["123.456789.0/32"]
+        src_ip_ranges = ["123.456.789.0/32"]
       }
     }
     description = "IP Whitelist"
