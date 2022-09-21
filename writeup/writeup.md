@@ -143,7 +143,7 @@ spec:
 It was fairly easy to deploy challenge updates. Given that the hosted challenges were containerized with a Jenkins job that built containers on commit, updating hosted challenges was as simple as pushing a commit to the challenge repo and then restarting said challenge after the container was built and pushed to GCR.
 
 ### Disabling Service Links and not mounting your Kubernetes Service Account Token
-For those who are not aware, you can disable service links and the mounting of the service account token. Given that GKE implements role-based access control (RBAC) by default and given that most of the flags were in the challenges themselves, having a leaked token wouldn't do much harm. In clusters without RBAC, having a leaked service account token would be **very** bad. We also did not need service links for our challenges, so that was also disabled.
+For those who are not aware, you can disable service links and the mounting of the service account token. Given that GKE implements role-based access control (RBAC) by default and given that most of the flags were in the challenges themselves, having a leaked token wouldn't do much harm. The default service permissions for a service account has no permissions, other than the permissions granted for an unauthenticated user. In clusters that give permission to unauthenticated users or bind any permissions to default service accounts, having a leaked service account token could potentially be **very** bad. We also did not need service links for our challenges, so that was also disabled.
 
 Disabling these would do no harm in our case, and you can do so by adding the following for a deployment:
 
