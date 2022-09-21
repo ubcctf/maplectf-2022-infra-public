@@ -7,6 +7,13 @@ Now that MapleCTF is over, let's have talk about the infrastructure. Let's talk 
 
 The entire infrastructure was hosted on GCP (thank you Google for the [sponsorship](https://goo.gle/ctfsponsorship)) and brought up using [Terraform](https://www.terraform.io/). This makes it easy to bring up and down from one command, but it also useful for disaster recovery. All of the challenges services related to this CTF were hosted on a zonal GKE cluster.
 
+As it is with any project on the cloud, you need to focus on the following:
+- Cost optimization - Use no more than you need to, every resource you use has a cost
+- Secure - This is a CTF after all, the last thing anyone wants is for your infrastructure to be exploited
+- Scalability - Use as much as you need. There is varying load in any application, in this case the most load would happen at the start of the CTF
+- Robustness - The infrastructure should stay up even when some things fail (challenges in particular)
+- Maintainability - Anyone can make changes in the console, but what is your source of truth? [IaC](https://learn.microsoft.com/en-us/devops/deliver/what-is-infrastructure-as-code)
+
 ## GKE Cluster
 
 I chose to run this on a zonal cluster due to a variety of factors. Because I wrote this infrastructure in Terraform, in the unlikely event of a GKE zone going down, I can easily move this to another zone with minimal downtime with just a few commands. [GKE free tier](https://cloud.google.com/kubernetes-engine/pricing#cluster_management_fee_and_free_tier) also gives you one free zonal or autopilot cluster per month, so I took advantage of that.
@@ -521,3 +528,11 @@ Having the challenges be completed very late resulted in no time to test the cha
 ![Grafana](assets/grafana-global.png "Grafana")
 
 At a period of low usage, I had 1 node for CTFd running and 3 nodes for the challenges. Looking back at this, we could have easily ran all of the challenges on less nodes.
+
+## Closing Thoughts
+
+Overall, despite some issues I think we did well in running our first international CTF. 
+
+As a DevOps engineer, I am definitely aware of what I need to change for the next iteration of MapleCTF. I would love to have a chat with people about running CTFs on infrastructure that is maintainable, scalable, and cost efficient.
+
+Feel free to contact me on [Twitter](https://twitter.com/BensonYanger) if you want to chat!
